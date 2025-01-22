@@ -1,0 +1,227 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Background Removal with Preview</title>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/icon?family=Material+Icons">
+    <link rel="stylesheet" href="https://code.getmdl.io/1.3.0/material.indigo-pink.min.css">
+    <script defer src="https://code.getmdl.io/1.3.0/material.min.js"></script>
+    <style>
+        body {
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background-color: #f5f5f5;
+        }
+        .card {
+            width: 700px;
+            padding: 20px;
+            border-radius: 8px;
+            background: #fff;
+            box-shadow: 0 4px 8px rgba(0, 0, 0, 0.2);
+        }
+        #preview-container {
+            width: 500px;
+            height: 500px;
+            border: 2px solid #ddd;
+            overflow: hidden;
+            position: relative;
+            margin: 20px auto;
+            background: url('/static/Template.jpg') no-repeat center center;
+            background-size: cover;
+        }
+        #preview {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%) scale(1);
+            transform-origin: center;
+            cursor: grab;
+        }
+        #preview:active {
+            cursor: grabbing;
+        }
+        .mdl-button {
+            margin-top: 20px;
+        }
+        h3, h4 {
+            text-align: center;
+            margin: 10px 0;
+        }
+        #spinner {
+            display: none;
+            margin: 10px auto;
+            width: 40px;
+            height: 40px;
+            border: 4px solid rgba(0, 0, 0, 0.1);
+            border-top: 4px solid #3498db;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+        }
+        @keyframes spin {
+            0% {
+                transform: rotate(0deg);
+            }
+            100% {
+                transform: rotate(360deg);
+            }
+        }
+    </style>
+</head>
+<body>
+    <center><div class="card">
+        <h3>Background Removal with Preview</h3>
+        <form id="upload-form">
+            <div class="mdl-textfield mdl-js-textfield">
+                <input type="file" id="image" class="mdl-textfield__input" accept="image/*" required>
+            </div><br>
+            <button type="button" id="upload-btn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored">
+                Remove Background
+            </button>
+        </form>
+        <div>
+            <h4>Image Preview</h4>
+            <div id="preview-container">
+                <img id="preview" src="" alt="Image Preview">
+            </div>
+        </div>
+        <div id="spinner"></div>
+        <button id="download-btn" class="mdl-button mdl-js-button mdl-button--raised mdl-button--colored" disabled>
+            Download Final Image
+        </button>
+    </div></center>
+
+    <script>
+        const uploadBtn = document.getElementById('upload-btn');
+        const imageInput = document.getElementById('image');
+        const preview = document.getElementById('preview');
+        const downloadBtn = document.getElementById('download-btn');
+        const spinner = document.getElementById('spinner');
+
+        // Variables for scaling and moving the preview image
+        let scale = 1;
+        let posX = 0;
+        let posY = 0;
+        let startX, startY;
+        let isDragging = false;
+
+        // Show a preview of the uploaded image
+        imageInput.addEventListener('change', () => {
+            const file = imageInput.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    preview.src = e.target.result; // Show the original image
+                    resetTransform();
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // Reset transform on the preview image
+        function resetTransform() {
+            scale = 1;
+            posX = 0;
+            posY = 0;
+            updateTransform();
+        }
+
+        // Update transform properties for the preview image
+        function updateTransform() {
+            preview.style.transform = `translate(-50%, -50%) translate(${posX}px, ${posY}px) scale(${scale})`;
+        }
+
+        // Mouse wheel zoom functionality for the preview image
+        preview.addEventListener('wheel', (e) => {
+            e.preventDefault();
+            const delta = e.deltaY > 0 ? -0.1 : 0.1;
+            const newScale = Math.min(Math.max(scale + delta, 0.1), 3); // Limit zoom between 0.1x and 3x
+            const rect = preview.getBoundingClientRect();
+
+            // Adjust position to keep the zoom centered
+            const offsetX = (e.clientX - rect.left) / rect.width - 0.5;
+            const offsetY = (e.clientY - rect.top) / rect.height - 0.5;
+
+            posX -= offsetX * (rect.width / scale) * (newScale - scale);
+            posY -= offsetY * (rect.height / scale) * (newScale - scale);
+
+            scale = newScale;
+            updateTransform();
+        });
+
+        // Drag functionality for the preview image
+        preview.addEventListener('mousedown', (e) => {
+            isDragging = true;
+            startX = e.clientX;
+            startY = e.clientY;
+            preview.style.cursor = 'grabbing';
+        });
+
+        document.addEventListener('mousemove', (e) => {
+            if (!isDragging) return;
+            posX += e.clientX - startX;
+            posY += e.clientY - startY;
+            startX = e.clientX;
+            startY = e.clientY;
+            updateTransform();
+        });
+
+        document.addEventListener('mouseup', () => {
+            isDragging = false;
+            preview.style.cursor = 'grab';
+        });
+
+        // Process the image and show the result in the preview box
+        uploadBtn.addEventListener('click', () => {
+            const file = imageInput.files[0];
+            if (!file) {
+                alert("Please upload an image.");
+                return;
+            }
+
+            // Show the spinner
+            spinner.style.display = 'block';
+
+            const formData = new FormData();
+            formData.append('image', file);
+            formData.append('scale', scale); // Current scale of the image
+            formData.append('posX', posX);  // Horizontal position offset
+            formData.append('posY', posY);  // Vertical position offset
+
+            fetch('/process', {
+                method: 'POST',
+                body: formData
+            })
+                .then(response => response.json())
+                .then(data => {
+                    if (data.image) {
+                        preview.src = data.image; // Replace the preview with the processed image
+                        resetTransform(); // Reset transformation for the new image
+
+                        // Enable the download button
+                        downloadBtn.disabled = false;
+                        downloadBtn.onclick = () => {
+                            const a = document.createElement('a');
+                            a.href = data.image;
+                            a.download = 'processed-image.png';
+                            a.click();
+                        };
+                    } else {
+                        alert('Error: ' + (data.error || 'Unknown error occurred.'));
+                    }
+                })
+                .catch(error => {
+                    console.error('Error:', error);
+                    alert('An error occurred while processing the image.');
+                })
+                .finally(() => {
+                    // Hide the spinner
+                    spinner.style.display = 'none';
+                });
+        });
+    </script>
+</body>
+</html>
